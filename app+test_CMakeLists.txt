@@ -1,0 +1,188 @@
+cmake_minimum_required(VERSION 3.13) # VERSION for generator expressions
+project(lib C)
+
+enable_testing()
+
+# Set C standard
+set(CMAKE_C_STANDARD 23)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Create build types before defining targets
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Sanitizer" CACHE STRING "" FORCE)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the build type" FORCE)
+endif()
+
+# Use GLOB to find source files with CONFIGURE_DEPENDS to detect new files
+file(GLOB_RECURSE APP_SRC_FILES CONFIGURE_DEPENDS "src/*.c")
+file(GLOB TEST_SRC_FILES CONFIGURE_DEPENDS "tests/*.c")
+
+# Create main application executable
+add_executable(main ${APP_SRC_FILES})
+target_include_directories(main PUBLIC include)
+
+# Create test executable (exclude main.c from app sources for tests)
+set(TEST_APP_SRC_FILES ${APP_SRC_FILES})
+list(FILTER TEST_APP_SRC_FILES EXCLUDE REGEX ".*main\\.c$")
+add_executable(tests ${TEST_SRC_FILES} ${TEST_APP_SRC_FILES})
+target_include_directories(tests PUBLIC include)
+
+# Platform-specific base linker flags
+if(UNIX AND NOT APPLE)
+    target_link_libraries(main PRIVATE m pthread dl X11 Xrandr Xinerama Xi Xxf86vm Xcursor Xext z)
+    target_link_libraries(tests PRIVATE m pthread dl X11 Xrandr Xinerama Xi Xxf86vm Xcursor Xext z)
+elseif(WIN32)
+    target_link_libraries(main PRIVATE opengl32 winmm gdi32 user32 ws2_32 advapi32)
+    target_link_libraries(tests PRIVATE opengl32 winmm gdi32 user32 ws2_32 advapi32)
+endif()
+
+# Configure compiler flags for different build types using generator expressions
+# Common flags for all build types on all compilers
+target_compile_options(main PRIVATE
+    # Common warnings for GCC/Clang and MSVC (/Wall is very verbose on MSVC)
+    "$<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wall;-Wextra;-Wpedantic;-Wshadow;-Wconversion>"
+    "$<$<CXX_COMPILER_ID:MSVC>:/W4>" # MSVC equivalent of reasonable warning level
+
+    # More possible warnings for clang:
+    #-ferror-limit=0 -Weverything
+
+    # Some warnings that are not really errors:
+    #-Wno-padded -Wno-reserved-macro-identifier -Wno-declaration-after-statement -Wno-unsafe-buffer-usage
+    #-Wno-bad-function-cast -Wno-reserved-identifier -Wno-float-equal -Wno-vla -Wno-pre-c11-compat
+)
+target_compile_options(tests PRIVATE
+    "$<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wall;-Wextra;-Wpedantic;-Wshadow;-Wconversion>"
+    "$<$<CXX_COMPILER_ID:MSVC>:/W4>"
+)
+
+# Debug flags (-g for GCC/Clang, /Zi for MSVC)
+target_compile_options(main PRIVATE "$<IF:$<CXX_COMPILER_ID:MSVC>,/Zi,-g>")
+target_compile_options(tests PRIVATE "$<IF:$<CXX_COMPILER_ID:MSVC>,/Zi,-g>")
+
+# Set sanitizer flags based on the compiler
+if(MSVC)
+    set(SANITIZER_COMPILE_FLAGS /fsanitize=address)
+    set(SANITIZER_LINK_FLAGS /fsanitize=address)
+else()
+    set(SANITIZER_COMPILE_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer)
+    set(SANITIZER_LINK_FLAGS -fsanitize=address,undefined)
+endif()
+
+# All possible sanitizers for Linux, as far as I searched:
+#-fsanitize=address
+#-fsanitize=leak
+#-fsanitize=undefined
+#-fsanitize=memory
+#-fsanitize=thread
+#-fsanitize=integer  # Integer overflow
+#-fsanitize=null  # Null pointer dereference
+#-fsanitize=return  # Non-void function returns without value
+#-fsanitize=signed-integer-overflow  # Signed integer overflow
+#-fsanitize=bounds  # Array bounds violations
+#-fsanitize=alignment  # Misaligned pointers
+#-fsanitize=object-size  # Out of bounds accesses
+#-fsanitize=float-divide-by-zero  # Floating point division by zero
+#-fsanitize=float-cast-overflow  # Floating point conversion overflow
+#-fsanitize=nonnull-attribute  # Violations of nonnull attributes
+#-fsanitize=vla-bound  # Variable length array bound violations
+
+# Other sanitizers for MSVC:
+#/fsanitize=address /fsanitize=kernel-address /fsanitize=fuzzer /fsanitize-address-use-after-return
+
+# Build-type specific flags: Optimizations and Sanitizer
+target_compile_options(main PRIVATE
+    # Release/Debug optimization levels
+    "$<$<CONFIG:Release>:$<IF:$<CXX_COMPILER_ID:MSVC>,/O2,-O3>>"
+    "$<$<CONFIG:Debug>:$<IF:$<CXX_COMPILER_ID:MSVC>,/Od,-O0>>"
+    # Sanitizer flags
+    "$<$<CONFIG:Sanitizer>:${SANITIZER_COMPILE_FLAGS}>"
+    "$<$<CONFIG:Sanitizer>:$<IF:$<CXX_COMPILER_ID:MSVC>,/Od,-O0>>" # Sanitizer builds use debug-like optimization
+)
+
+target_compile_options(tests PRIVATE
+    "$<$<CONFIG:Release>:$<IF:$<CXX_COMPILER_ID:MSVC>,/O2,-O3>>"
+    "$<$<CONFIG:Debug>:$<IF:$<CXX_COMPILER_ID:MSVC>,/Od,-O0>>"
+    "$<$<CONFIG:Sanitizer>:${SANITIZER_COMPILE_FLAGS}>"
+    "$<$<CONFIG:Sanitizer>:$<IF:$<CXX_COMPILER_ID:MSVC>,/Od,-O0>>"
+)
+
+target_compile_options(lib PRIVATE
+    "$<$<CONFIG:Release>:$<IF:$<CXX_COMPILER_ID:MSVC>,/O2,-O3>>"
+    "$<$<CONFIG:Debug>:$<IF:$<CXX_COMPILER_ID:MSVC>,/Od,-O0>>"
+    "$<$<CONFIG:Sanitizer>:${SANITIZER_COMPILE_FLAGS}>"
+    "$<$<CONFIG:Sanitizer>:$<IF:$<CXX_COMPILER_ID:MSVC>,/Od,-O0>>"
+)
+
+
+# Apply the same sanitizer flags at link time
+target_link_options(main PRIVATE
+    "$<$<CONFIG:Sanitizer>:${SANITIZER_COMPILE_FLAGS}>"
+)
+
+target_link_options(tests PRIVATE
+    "$<$<CONFIG:Sanitizer>:${SANITIZER_COMPILE_FLAGS}>"
+)
+
+target_link_options(lib PRIVATE
+    "$<$<CONFIG:Sanitizer>:${SANITIZER_LINK_FLAGS}>"
+)
+
+# ===== CTest Configuration =====
+
+# Add the main test suite
+add_test(NAME alltests COMMAND tests --suite all)
+add_test(NAME test1 COMMAND tests --suite test1)
+add_test(NAME test2 COMMAND tests --suite test2)
+
+# Set different properties for different test types
+#set_tests_properties(tests PROPERTIES TIMEOUT 10 WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}) # Run from build directory in case some test data is needed
+#set_tests_properties(FastTest PROPERTIES TIMEOUT 60 LABELS "fast")
+#set_tests_properties(SlowTest PROPERTIES TIMEOUT 120 LABELS "slow")
+
+# Usage:
+# Create build directory
+#mkdir build
+#cd build
+
+# Configure with desired build type:
+#cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug ..  # or Release or Sanitizer
+
+# Or on Windows MinGW:
+#cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug ..
+
+# Or on Windows MSYS:
+#cmake -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Debug ..
+
+#If using nmake in Visual Studio's Developer Command Prompt:
+#cmake -G "NMake Makefiles" ..
+
+# Build:
+#cmake --build .
+
+# Parallel:
+#cmake --build . -j4 # 4 cores used, $(nproc) for all cores available
+
+# To clean and build from scratch:
+#rm -rf build && mkdir build && cd build
+
+# After building, run the executable on build/ directory
+#./main
+#./tests
+
+# To run all tests (after building):
+#ctest
+
+# To run a specific test:
+#ctest -R test1
+
+# Run only tests that have "fast" labels (use -LE to exclude)
+#ctest -L fast
+
+# Usage with the CMakePresets.json (will make Unix Makefiles):
+#cmake --preset debug
+#cmake --build --preset debug
+#cmake --preset sanitizer
+#cmake --build --preset sanitizer
+#cmake --preset release
+#cmake --build --preset release
