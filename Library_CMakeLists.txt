@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13) # VERSION for generator expressions
-project(lib C)
+project(allocator_lib C)
 
 enable_testing()
 
@@ -18,36 +18,36 @@ endif()
 file(GLOB_RECURSE ALL_SRC_FILES CONFIGURE_DEPENDS "src/*.c")
 file(GLOB TEST_FILES CONFIGURE_DEPENDS "tests/*.c")
 
-# ====== To make a library out of this project "lib" ======
+# ====== To make a library out of this project "allocator_lib" ======
 # Separate library sources (everything except main.c)
 set(LIB_SRC_FILES ${ALL_SRC_FILES})
 list(FILTER LIB_SRC_FILES EXCLUDE REGEX ".*main\\.c$")
 
 # Create library from all sources except main.c
-add_library(lib ${LIB_SRC_FILES})
-target_include_directories(lib PUBLIC include)
+add_library(allocator_lib ${LIB_SRC_FILES})
+target_include_directories(allocator_lib PUBLIC include)
 
 # Create main application executable (only main.c)
 add_executable(main src/main.c)
 target_include_directories(main PUBLIC include)
 set_target_properties(main PROPERTIES OUTPUT_NAME main)
-target_link_libraries(main lib)
+target_link_libraries(main PRIVATE allocator_lib)
 
 # Create test executable (only test files, links against library)
 add_executable(tests ${TEST_FILES})
 target_include_directories(tests PUBLIC include)
 set_target_properties(tests PROPERTIES OUTPUT_NAME tests)
-target_link_libraries(tests lib)
+target_link_libraries(tests PRIVATE allocator_lib)
 
 # Platform-specific base linker flags
 if(UNIX AND NOT APPLE)
     target_link_libraries(main PRIVATE m pthread dl X11 Xrandr Xinerama Xi Xxf86vm Xcursor Xext z)
     target_link_libraries(tests PRIVATE m pthread dl X11 Xrandr Xinerama Xi Xxf86vm Xcursor Xext z)
-    target_link_libraries(lib PRIVATE m pthread dl X11 Xrandr Xinerama Xi Xxf86vm Xcursor Xext z)
+    target_link_libraries(allocator_lib PRIVATE m pthread dl X11 Xrandr Xinerama Xi Xxf86vm Xcursor Xext z)
 elseif(WIN32)
     target_link_libraries(main PRIVATE opengl32 winmm gdi32 user32 ws2_32 advapi32)
     target_link_libraries(tests PRIVATE opengl32 winmm gdi32 user32 ws2_32 advapi32)
-    target_link_libraries(lib PRIVATE opengl32 winmm gdi32 user32 ws2_32 advapi32)
+    target_link_libraries(allocator_lib PRIVATE opengl32 winmm gdi32 user32 ws2_32 advapi32)
 endif()
 
 # Configure compiler flags for different build types using generator expressions
@@ -69,7 +69,7 @@ target_compile_options(tests PRIVATE
     "$<$<CXX_COMPILER_ID:MSVC>:/W4>"
 )
 
-target_compile_options(lib PRIVATE
+target_compile_options(allocator_lib PRIVATE
     "$<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wall;-Wextra;-Wpedantic;-Wshadow;-Wconversion>"
     "$<$<CXX_COMPILER_ID:MSVC>:/W4>"
 )
@@ -77,7 +77,7 @@ target_compile_options(lib PRIVATE
 # Debug flags (-g for GCC/Clang, /Zi for MSVC)
 target_compile_options(main PRIVATE "$<IF:$<CXX_COMPILER_ID:MSVC>,/Zi,-g>")
 target_compile_options(tests PRIVATE "$<IF:$<CXX_COMPILER_ID:MSVC>,/Zi,-g>")
-target_compile_options(lib PRIVATE "$<IF:$<CXX_COMPILER_ID:MSVC>,/Zi,-g>")
+target_compile_options(allocator_lib PRIVATE "$<IF:$<CXX_COMPILER_ID:MSVC>,/Zi,-g>")
 
 # Set sanitizer flags based on the compiler
 if(MSVC)
@@ -126,7 +126,7 @@ target_compile_options(tests PRIVATE
     "$<$<CONFIG:Sanitizer>:$<IF:$<CXX_COMPILER_ID:MSVC>,/Od,-O0>>"
 )
 
-target_compile_options(lib PRIVATE
+target_compile_options(allocator_lib PRIVATE
     "$<$<CONFIG:Release>:$<IF:$<CXX_COMPILER_ID:MSVC>,/O2,-O3>>"
     "$<$<CONFIG:Debug>:$<IF:$<CXX_COMPILER_ID:MSVC>,/Od,-O0>>"
     "$<$<CONFIG:Sanitizer>:${SANITIZER_COMPILE_FLAGS}>"
@@ -143,7 +143,7 @@ target_link_options(tests PRIVATE
     "$<$<CONFIG:Sanitizer>:${SANITIZER_COMPILE_FLAGS}>"
 )
 
-target_link_options(lib PRIVATE
+target_link_options(allocator_lib PRIVATE
     "$<$<CONFIG:Sanitizer>:${SANITIZER_LINK_FLAGS}>"
 )
 
